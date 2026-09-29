@@ -1,5 +1,6 @@
 # RemoteCodex Agent
 
+[English](README.en.md) | [中文](README.md)  
 仓库地址：[https://github.com/qmdq/remote-codex-backend](https://github.com/qmdq/remote-codex-backend)  
 配套手机端：[https://github.com/qmdq/remote-codex-app](https://github.com/qmdq/remote-codex-app)
 
