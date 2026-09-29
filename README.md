@@ -3,7 +3,7 @@
 仓库地址：[https://github.com/qmdq/remote-codex-backend](https://github.com/qmdq/remote-codex-backend)  
 配套手机端：[https://github.com/qmdq/remote-codex-app](https://github.com/qmdq/remote-codex-app)
 
-PC 端 Python Agent，是 RemoteCodex 的控制与安全中枢。它在 PC 上管理设备配对、授权项目、Codex 会话、事件流、文件访问、系统指标、远程终端和屏幕控制，并通过 WebSocket 把状态同步给手机端；手机只发送受控指令，实际执行、审批和访问边界都留在 PC。默认只监听 `127.0.0.1`，局域网手机直连时需要使用显式开放监听地址的配置。
+PC 端 Python Agent，是手机端 Codex Agent 工具的远程执行与安全中枢。手机端提供 Codex Agent 的移动操作界面；Codex 调用、命令执行、文件修改、系统指标、终端和屏幕控制都由这个 Agent 在 PC 上完成。它同时管理设备配对、授权项目、事件流、审批和访问边界。默认只监听 `127.0.0.1`，局域网手机直连时需要使用显式开放监听地址的配置。
 
 ## 能做什么
 
