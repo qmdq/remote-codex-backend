@@ -1,0 +1,19 @@
+# Runtime
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+runtime/*
+!runtime/.gitkeep
+
+# Local configuration and state
+config.local.json
+config.mobile.json
+*.db
+*.db3
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+*.zip

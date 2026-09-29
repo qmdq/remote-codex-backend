@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RemoteCodex 控制台</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: #e7ecf5;
+      background: radial-gradient(760px 480px at 88% -8%, rgba(232,112,58,.11), transparent 62%),
+                  radial-gradient(640px 520px at -12% 108%, rgba(56,189,248,.08), transparent 62%), #05070d;
+      font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+      font-size: 14px; line-height: 1.5;
+    }
+    .mono { font-family: Cascadia Code,Consolas,"JetBrains Mono",monospace; }
+    .shell { width: min(1080px,calc(100% - 40px)); margin: 0 auto; padding: 28px 0 48px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .mark {
+      width: 42px; height: 42px; flex: none; display: grid; place-items: center;
+      border-radius: 13px; background: conic-gradient(from 210deg,#e8703a,#b45cf0,#38bdf8,#e8703a);
+      color: #12060a; font-size: 19px; font-weight: 800;
+    }
+    h1 { margin: 0; font-size: 20px; line-height: 1.2; }
+    .subtitle { margin-top: 3px; color: #8b93a7; font-size: 12px; }
+    .actions { display: flex; align-items: center; gap: 8px; flex: none; }
+    .status {
+      display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px;
+      border: 1px solid #273557; border-radius: 99px; background: #101728; color: #8b93a7; font-size: 12px;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #f87171; }
+    .dot.ok { background: #34d399; box-shadow: 0 0 8px rgba(52,211,153,.65); }
+    .button {
+      height: 34px; padding: 0 13px; border: 0; border-radius: 9px; cursor: pointer;
+      background: #e8703a; color: #fff; font-size: 12px; font-weight: 650; white-space: nowrap;
+    }
+    .button:hover { background: #f2814d; }
+    .button.ghost { background: transparent; border: 1px solid #31405f; color: #a9b7d3; }
+    .button.ghost:hover { border-color: #435a82; color: #e7ecf5; }
+    .button.small { height: 30px; padding: 0 10px; font-size: 11px; }
+    .button.danger { background: #7f1d1d; }
+    .button.danger:hover { background: #991b1b; }
+    .button[disabled] { opacity: .45; cursor: not-allowed; }
+    .grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,.72fr); gap: 14px; align-items: start; }
+    .stack { display: flex; flex-direction: column; gap: 14px; }
+    .card { border: 1px solid rgba(255,255,255,.07); border-radius: 12px; background: #101728; overflow: hidden; }
+    .head {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      min-height: 48px; padding: 0 15px; border-bottom: 1px solid rgba(255,255,255,.05);
+    }
+    .head h2 { margin: 0; color: #c4cdde; font-size: 14px; font-weight: 650; }
+    .tag { padding: 3px 8px; border: 1px solid #253353; border-radius: 99px; color: #7d8db0; font-size: 10px; white-space: nowrap; }
+    .body { padding: 14px 15px; }
+    .empty { padding: 26px 15px; color: #647087; text-align: center; font-size: 12px; }
+    .issue { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .code { font-size: 38px; font-weight: 750; color: #f0a06a; letter-spacing: 8px; }
+    .code-meta { margin-top: 3px; color: #8b93a7; font-size: 11px; }
+    .connect {
+      display: grid; grid-template-columns: 86px minmax(0,1fr); align-items: center; gap: 8px;
+      margin-top: 13px; padding: 10px; border: 1px solid rgba(56,189,248,.22);
+      border-radius: 9px; background: rgba(56,189,248,.06);
+    }
+    .label { color: #8b93a7; font-size: 12px; }
+    .value { overflow: hidden; color: #7dd3fc; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .list { display: flex; flex-direction: column; }
+    .item {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 13px 15px; border-bottom: 1px solid rgba(255,255,255,.045);
+    }
+    .item:last-child { border-bottom: 0; }
+    .item-main { min-width: 0; }
+    .title { overflow: hidden; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .meta { margin-top: 4px; color: #7d8db0; font-size: 11px; }
+    .item-actions { display: flex; gap: 7px; flex: none; }
+    .kv { display: grid; grid-template-columns: 118px minmax(0,1fr); gap: 10px; }
+    .kv div { min-height: 28px; }
+    .kv .value { color: #dbe4f5; white-space: normal; }
+    .root-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      min-height: 34px; padding: 8px 10px; border: 1px solid #273557; border-radius: 9px; background: #0d1424;
+    }
+    .root-item + .root-item { margin-top: 8px; }
+    .root-text { overflow: hidden; color: #7dd3fc; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .browser {
+      border: 1px solid #273557; border-radius: 9px; overflow: hidden; background: #0d1424;
+    }
+    .browser-bar {
+      display: flex; align-items: center; gap: 8px; min-height: 38px;
+      padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.06); background: #111a2e;
+    }
+    .browser-path {
+      min-width: 0; flex: 1; overflow: hidden; color: #dbe4f5; font-size: 11px;
+      text-align: center; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .browser-list {
+      max-height: min(32vh, 230px); overflow: auto; scrollbar-width: thin;
+      scrollbar-color: #31405f transparent;
+    }
+    .browse-entry {
+      width: 100%; min-height: 34px; display: flex; align-items: center; gap: 8px;
+      padding: 0 10px; border: 0; border-bottom: 1px solid rgba(255,255,255,.045);
+      background: transparent; color: #c4cdde; cursor: pointer; font-size: 12px; text-align: left;
+    }
+    .browse-entry:last-child { border-bottom: 0; }
+    .browse-entry:hover { background: rgba(232,112,58,.09); color: #fff; }
+    .browse-icon { flex: none; color: #e8703a; font-size: 12px; }
+    .browse-name {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .select-button {
+      min-height: 38px; width: 100%; margin-top: 8px;
+    }
+    .roots-toggle {
+      width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      min-height: 38px; margin: 0 0 12px; padding: 0 10px; cursor: pointer;
+      border: 1px solid #273557; border-radius: 9px; background: #0d1424; text-align: left;
+    }
+    .roots-toggle:hover { border-color: #435a82; }
+    .roots-summary { color: #7d8db0; font-size: 11px; }
+    .roots-chevron { flex: none; color: #8b93a7; font-size: 11px; transition: transform .16s ease; }
+    .roots-chevron.open { transform: rotate(180deg); }
+    .roots-panel { margin: -4px 0 14px; }
+    .roots-list {
+      max-height: min(46vh, 320px); overflow: auto; padding-right: 2px;
+      scrollbar-width: thin; scrollbar-color: #31405f transparent;
+    }
+    .input {
+      min-width: 0; flex: 1; height: 32px; padding: 0 10px; border: 1px solid #31405f;
+      border-radius: 9px; outline: none; background: #0d1424; color: #dbe4f5; font-size: 12px;
+    }
+    .input:focus { border-color: #5f7baa; }
+    .toast {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+      max-width: min(560px,calc(100vw - 40px)); padding: 10px 16px;
+      border: 1px solid #33436e; border-radius: 99px; background: #1b2540;
+      color: #dbe4f5; font-size: 12px; text-align: center;
+      opacity: 0; pointer-events: none; transition: opacity .18s ease;
+    }
+    .toast.show { opacity: 1; }
+    .toast.ok { border-color: rgba(52,211,153,.4); color: #8ce6b0; }
+    .toast.error { border-color: rgba(248,113,113,.4); background: #44171a; color: #ffd9d9; }
+    @media (max-width: 780px) {
+      .grid { grid-template-columns: 1fr; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .actions { width: 100%; justify-content: space-between; }
+      .issue { align-items: flex-start; flex-direction: column; }
+      .kv { grid-template-columns: 1fr; }
+      .item { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark">R</div>
+        <div>
+          <h1>RemoteCodex 控制台</h1>
+          <div class="subtitle">手机配对 · 设备管理 · 后台配置</div>
+        </div>
+      </div>
+      <div class="actions">
+        <span class="status"><span class="dot" id="statusDot"></span><span id="statusText">连接中</span></span>
+        <button class="button ghost" id="refresh">刷新</button>
+      </div>
+    </header>
+    <section class="grid">
+      <div class="stack">
+        <div class="card">
+          <div class="head">
+            <h2>手机配对</h2>
+            <span class="tag">配对码 5 分钟有效</span>
+          </div>
+          <div class="body">
+            <div class="issue">
+              <div>
+                <div class="code mono" id="pairCode">------</div>
+                <div class="code-meta" id="pairMeta">生成后让手机在配对页输入</div>
+              </div>
+              <button class="button" id="issueCode">生成配对码</button>
+            </div>
+            <div class="connect">
+              <div class="label">手机地址</div>
+              <div class="value mono" id="phoneUrl">--</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="head">
+            <h2>待处理配对</h2>
+            <span class="tag" id="pendingCount">0 条</span>
+          </div>
+          <div class="list" id="pendingList"><div class="empty">暂无待处理请求</div></div>
+        </div>
+        <div class="card">
+          <div class="head">
+            <h2>设备管理</h2>
+            <span class="tag" id="deviceCount">0 台</span>
+          </div>
+          <div class="list" id="deviceList"><div class="empty">暂无设备</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="head">
+          <h2>后台配置</h2>
+          <span class="tag" id="rootCount">允许目录 0</span>
+        </div>
+        <div class="body">
+          <button class="roots-toggle" id="rootsToggle" type="button" aria-expanded="false" aria-controls="rootsPanel">
+            <span class="label">允许目录 · 手动选择</span>
+            <span class="roots-summary mono" id="rootSummary">0 个</span>
+            <span class="roots-chevron" id="rootsChevron">▾</span>
+          </button>
+          <div class="roots-panel" id="rootsPanel" hidden>
+            <div class="roots-list" id="rootList"></div>
+            <div class="browser">
+              <div class="browser-bar">
+                <button class="button small ghost" id="browseUp">上级</button>
+                <div class="browser-path mono" id="browsePath">选择磁盘</div>
+                <button class="button small ghost" id="browseRefresh">刷新</button>
+              </div>
+              <div class="browser-list" id="browseList"></div>
+            </div>
+            <button class="button select-button" id="addRoot">选中当前目录</button>
+          </div>
+          <div class="kv" id="configView"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <div class="toast" id="toast"></div>
+  <script>
+    const ADMIN_TOKEN = "__ADMIN_TOKEN__";
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const toast = document.getElementById("toast");
+    let toastTimer;
+
+    const show = (message, tone = "info") => {
+      toast.textContent = message;
+      toast.className = `toast show ${tone}`;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.className = "toast"; }, 2400);
+    };
+
+    const localTime = (value) => {
+      if (!value) return "--";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    };
+
+    const remaining = (value) => {
+      const ms = new Date(value).getTime() - Date.now();
+      if (Number.isNaN(ms)) return "";
+      return ms > 0 ? `剩余 ${Math.ceil(ms / 1000)} 秒` : "已过期";
+    };
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: {
+          "X-Admin-Token": ADMIN_TOKEN,
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+        },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+      return data;
+    }
+
+    function makeEmpty(parent, message) {
+      const item = document.createElement("div");
+      item.className = "empty";
+      item.textContent = message;
+      parent.appendChild(item);
+    }
+
+    function renderPending(items) {
+      const box = document.getElementById("pendingList");
+      document.getElementById("pendingCount").textContent = `${items.length} 条`;
+      box.textContent = "";
+      if (!items.length) return makeEmpty(box, "暂无待处理请求");
+      items.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "item";
+        const main = document.createElement("div"); main.className = "item-main";
+        const title = document.createElement("div"); title.className = "title";
+        const meta = document.createElement("div"); meta.className = "meta mono";
+        title.textContent = item.device_name || "Mobile device";
+        meta.textContent = `${item.id} · ${remaining(item.expires_at)}`;
+        main.append(title, meta);
+        const actions = document.createElement("div"); actions.className = "item-actions";
+        const approve = document.createElement("button"); approve.className = "button small";
+        const reject = document.createElement("button"); reject.className = "button small ghost";
+        approve.textContent = "批准"; reject.textContent = "拒绝";
+        approve.onclick = async () => {
+          approve.disabled = true;
+          try { await api(`/api/pairings/${encodeURIComponent(item.id)}/approve`, { method: "POST" }); show("已批准，手机可连接", "ok"); await refresh(); }
+          catch (error) { approve.disabled = false; show(error.message, "error"); }
+        };
+        reject.onclick = async () => {
+          reject.disabled = true;
+          try { await api(`/api/pairings/${encodeURIComponent(item.id)}/reject`, { method: "POST" }); show("已拒绝", "ok"); await refresh(); }
+          catch (error) { reject.disabled = false; show(error.message, "error"); }
+        };
+        actions.append(approve, reject); row.append(main, actions); box.appendChild(row);
+      });
+    }
+
+    function renderDevices(items) {
+      const box = document.getElementById("deviceList");
+      document.getElementById("deviceCount").textContent = `${items.length} 台`;
+      box.textContent = "";
+      if (!items.length) return makeEmpty(box, "暂无设备");
+      items.forEach((item) => {
+        const row = document.createElement("div"); row.className = "item";
+        const main = document.createElement("div"); main.className = "item-main";
+        const title = document.createElement("div"); title.className = "title";
+        const meta = document.createElement("div"); meta.className = "meta mono";
+        title.textContent = item.name || "Mobile device";
+        meta.textContent = `${item.id} · 最近在线 ${localTime(item.last_seen_at)}`;
+        main.append(title, meta);
+        const actions = document.createElement("div"); actions.className = "item-actions";
+        const revoke = document.createElement("button");
+        revoke.className = `button small ${item.revoked ? "ghost" : "danger"}`;
+        revoke.textContent = item.revoked ? "已吊销" : "吊销";
+        revoke.disabled = Boolean(item.revoked);
+        revoke.onclick = async () => {
+          revoke.disabled = true;
+          try { await api(`/api/devices/${encodeURIComponent(item.id)}/revoke`, { method: "POST" }); show("设备已吊销", "ok"); await refresh(); }
+          catch (error) { revoke.disabled = false; show(error.message, "error"); }
+        };
+        actions.appendChild(revoke); row.append(main, actions); box.appendChild(row);
+      });
+    }
+
+    function renderConfig(config) {
+      const box = document.getElementById("configView");
+      box.textContent = "";
+      Object.entries(config).forEach(([label, value]) => {
+        const labelNode = document.createElement("div"); labelNode.className = "label"; labelNode.textContent = label;
+        const valueNode = document.createElement("div"); valueNode.className = "value mono"; valueNode.textContent = value;
+        box.append(labelNode, valueNode);
+      });
+    }
+
+    function renderRoots(roots) {
+      const box = document.getElementById("rootList");
+      const count = roots.length;
+      document.getElementById("rootCount").textContent = `允许目录 ${count}`;
+      document.getElementById("rootSummary").textContent = `${count} 个`;
+      box.textContent = "";
+      if (!roots.length) return makeEmpty(box, "暂无允许目录");
+      roots.forEach((path) => {
+        const row = document.createElement("div"); row.className = "root-item";
+        const text = document.createElement("div"); text.className = "root-text mono"; text.textContent = path; text.title = path;
+        const remove = document.createElement("button"); remove.className = "button small ghost"; remove.textContent = "移除";
+        remove.onclick = async () => {
+          remove.disabled = true;
+          try {
+            const result = await api(`/api/allowed-roots?path=${encodeURIComponent(path)}`, { method: "DELETE" });
+            show("目录已移除", "ok");
+            await refresh();
+            renderRoots(result.allowed_roots);
+          } catch (error) { remove.disabled = false; show(error.message, "error"); }
+        };
+        row.append(text, remove); box.appendChild(row);
+      });
+    }
+
+    let browsePath = "";
+
+    async function browseDirectory(path) {
+      const listBox = document.getElementById("browseList");
+      const pathNode = document.getElementById("browsePath");
+      const upButton = document.getElementById("browseUp");
+      const refreshButton = document.getElementById("browseRefresh");
+      listBox.textContent = "";
+      makeEmpty(listBox, "读取目录中...");
+      pathNode.textContent = path || "选择磁盘";
+      upButton.disabled = refreshButton.disabled = true;
+      try {
+        const result = await api(`/api/filesystem?path=${encodeURIComponent(path)}`);
+        browsePath = result.path || "";
+        upButton.disabled = !result.parent;
+        pathNode.textContent = result.path || "选择磁盘";
+        listBox.textContent = "";
+        if (!result.directories.length) return makeEmpty(listBox, "没有子目录");
+        result.directories.forEach((directory) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "browse-entry";
+          button.title = directory;
+          const icon = document.createElement("span");
+          icon.className = "browse-icon";
+          icon.textContent = "▸";
+          const name = document.createElement("span");
+          name.className = "browse-name mono";
+          name.textContent = result.path ? directory.split(/[\\/]/).filter(Boolean).pop() : directory;
+          button.append(icon, name);
+          button.onclick = () => browseDirectory(directory);
+          listBox.appendChild(button);
+        });
+      } catch (error) {
+        listBox.textContent = "";
+        makeEmpty(listBox, "目录读取失败");
+        show(error.message, "error");
+      } finally {
+        upButton.disabled = refreshButton.disabled = false;
+        upButton.disabled = !browsePath;
+      }
+    }
+
+    async function refresh() {
+      try {
+        const state = await api("/api/state");
+        statusDot.className = "dot ok";
+        statusText.textContent = state.server.running ? "运行中" : "已停止";
+        document.getElementById("phoneUrl").textContent = state.phone_url;
+        renderPending(state.pairings);
+        renderDevices(state.devices);
+        renderRoots(state.allowed_roots || []);
+        renderConfig(state.config);
+        return state;
+      } catch (error) {
+        statusDot.className = "dot";
+        statusText.textContent = "离线";
+        show(error.message, "error");
+      }
+    }
+
+    document.getElementById("issueCode").onclick = async () => {
+      const button = document.getElementById("issueCode");
+      button.disabled = true;
+      try {
+        const result = await api("/api/pairings", { method: "POST", body: JSON.stringify({ device_name: "RemoteCodex Phone" }) });
+        document.getElementById("pairCode").textContent = result.code;
+        document.getElementById("pairMeta").textContent = `Pairing ID: ${result.pairing_id}`;
+        show("配对码已生成", "ok");
+        await refresh();
+      } catch (error) {
+        show(error.message, "error");
+      } finally { button.disabled = false; }
+    };
+
+    document.getElementById("refresh").onclick = () => refresh();
+    document.getElementById("rootsToggle").onclick = () => {
+      const toggle = document.getElementById("rootsToggle");
+      const panel = document.getElementById("rootsPanel");
+      const chevron = document.getElementById("rootsChevron");
+      const expanded = panel.hidden;
+      panel.hidden = !expanded;
+      toggle.setAttribute("aria-expanded", String(expanded));
+      chevron.classList.toggle("open", expanded);
+      if (expanded && !document.getElementById("browseList").childElementCount) {
+        browseDirectory("");
+      }
+    };
+    document.getElementById("browseUp").onclick = async () => {
+      if (!browsePath) return;
+      const result = await api(`/api/filesystem?path=${encodeURIComponent(browsePath)}`);
+      browseDirectory(result.parent || "");
+    };
+    document.getElementById("browseRefresh").onclick = () => browseDirectory(browsePath);
+    document.getElementById("addRoot").onclick = async () => {
+      const button = document.getElementById("addRoot");
+      if (!browsePath) {
+        show("请先进入要允许的目录", "error");
+        return;
+      }
+      button.disabled = true;
+      try {
+        const result = await api("/api/allowed-roots", { method: "POST", body: JSON.stringify({ path: browsePath }) });
+        show("目录已添加", "ok");
+        await refresh();
+        renderRoots(result.allowed_roots);
+      } catch (error) { show(error.message, "error"); }
+      finally { button.disabled = false; }
+    };
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

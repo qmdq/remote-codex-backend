@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "remote-codex-agent"
+version = "0.1.0"
+description = "Local WebSocket agent for driving OpenAI Codex from mobile devices"
+requires-python = ">=3.10"
+dependencies = [
+  "websockets>=12",
+  "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+monitor = [
+  "mss>=9",
+  "Pillow>=10",
+]
+desktop = [
+  "pyautogui>=0.9.54",
+]
+terminal = [
+  "pywinpty>=2.0.13; platform_system == 'Windows'",
+]
+dev = []
+
+[project.scripts]
+remote-codex-agent = "app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

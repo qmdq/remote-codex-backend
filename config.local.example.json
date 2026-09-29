@@ -1,0 +1,42 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 7800,
+    "admin_enabled": true,
+    "admin_host": "127.0.0.1",
+    "admin_port": 7801,
+    "heartbeat_interval_sec": 15,
+    "handshake_timeout_sec": 5,
+    "max_message_bytes": 1048576
+  },
+  "security": {
+    "pairing_code_ttl_sec": 300,
+    "pairing_confirm_ttl_sec": 60,
+    "pairing_max_attempts": 5,
+    "auth_failure_lock_sec": 300
+  },
+  "projects": {
+    "allowed_roots": [
+      "D:\\work\\code\\your-project"
+    ],
+    "default_sandbox": "workspace_write",
+    "fallback_to_read_only": true
+  },
+  "codex": {
+    "mode": "sdk",
+    "fallback_to_fake": false,
+    "max_running_turns": 8,
+    "turn_timeout_sec": 1800
+  },
+  "monitor": {
+    "metrics_interval_sec": 1,
+    "screen_default_fps": 30,
+    "screen_max_fps": 60,
+    "screen_max_width": 1920,
+    "screen_jpeg_quality": 60
+  },
+  "storage": {
+    "database_path": "backend/runtime/remote-codex.sqlite",
+    "event_retention_days": 30
+  }
+}
