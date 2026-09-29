@@ -17,15 +17,30 @@ if (-not (Test-Path $Python)) {
     if ($LASTEXITCODE -ne 0) { throw "Failed to create Python virtual environment." }
 }
 
-& $Python -c "import websockets, psutil, mss, PIL, pyautogui" > $null 2>&1
-if ($LASTEXITCODE -ne 0) {
+# Dependency probes are expected to fail on a fresh machine. Keep PowerShell
+# from turning their stderr tracebacks into terminating NativeCommandError.
+$CoreDependenciesInstalled = $false
+$TerminalDependencyInstalled = $false
+$PreviousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+& $Python -c "import websockets, psutil, mss, PIL, pyautogui" > $null 2>$null
+if ($LASTEXITCODE -eq 0) {
+    $CoreDependenciesInstalled = $true
+}
+
+& $Python -c "import winpty" > $null 2>$null
+if ($LASTEXITCODE -eq 0) {
+    $TerminalDependencyInstalled = $true
+}
+$ErrorActionPreference = $PreviousErrorActionPreference
+
+if (-not $CoreDependenciesInstalled) {
     Write-Host "[RemoteCodex] Installing dependencies..."
     & $Python -m pip install -e ".[monitor,desktop]"
     if ($LASTEXITCODE -ne 0) { throw "Failed to install backend dependencies." }
 }
 
-& $Python -c "import winpty" > $null 2>&1
-if ($LASTEXITCODE -ne 0) {
+if (-not $TerminalDependencyInstalled) {
     Write-Host "[RemoteCodex] Installing terminal PTY support..."
     & $Python -m pip install "pywinpty>=2.0.13"
     if ($LASTEXITCODE -ne 0) {
