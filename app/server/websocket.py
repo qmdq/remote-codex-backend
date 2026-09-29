@@ -21,10 +21,12 @@ from ..input_service import SystemInputService, InputValidationError
 from ..monitors.metrics import MetricsMonitor
 from ..monitors.screen import ScreenMonitor
 from ..projects.manager import ProjectService
+from ..projects.authorizations import DirectoryAuthorizationService
 from ..protocol.errors import (
     AgentError,
     AuthenticationError,
     PairingError,
+    ProjectAuthorizationRequired,
     ValidationError,
 )
 from ..protocol.messages import Envelope, error_payload, parse_envelope, response
@@ -49,6 +51,7 @@ class AgentServer:
         devices: DeviceService,
         pairing: PairingService,
         projects: ProjectService,
+        directory_authorizations: DirectoryAuthorizationService,
         turns: TurnSupervisor,
         events: EventStore,
         fanout: EventFanout,
@@ -66,6 +69,7 @@ class AgentServer:
         self.devices = devices
         self.pairing = pairing
         self.projects = projects
+        self.directory_authorizations = directory_authorizations
         self.turns = turns
         self.events = events
         self.fanout = fanout
@@ -123,6 +127,8 @@ class AgentServer:
                     "screen_input": True,
                     "session_actions": True,
                     "codex_sessions": True,
+                    "temporary_chats": True,
+                    "directory_authorization": True,
                     "terminal": True,
                     "terminal_pty": self.terminal.pty_available,
                 },
@@ -291,6 +297,39 @@ class AgentServer:
                 "running_turns": self.turns.running_turns(),
             }, request_id=envelope.id))
             return
+        if message_type == "project.temporary.create":
+            project = await self.projects.create_temporary(
+                str(payload.get("name", ""))
+            )
+            self._subscribe_project(connection, project["id"])
+            await connection.send(response("project.snapshot", {
+                "selected": project,
+                "latest_seq": await self.events.latest_seq(project["id"]),
+                "projects": await self.projects.list(),
+                "running_turns": self.turns.running_turns(),
+            }, request_id=envelope.id))
+            return
+        if message_type in {"project.authorization.request", "project.authorization.status"}:
+            project = await self.projects.get(str(payload.get("project_id", "")))
+            if message_type == "project.authorization.status":
+                requests = await self.directory_authorizations.pending()
+                await connection.send(response("project.authorization.snapshot", {
+                    "project_id": project["id"],
+                    "requests": [
+                        item for item in requests
+                        if item.get("project_id") == project["id"]
+                    ],
+                }, request_id=envelope.id))
+                return
+            request = await self.directory_authorizations.request(
+                project,
+                str(payload.get("reason", "")),
+            )
+            await connection.send(response("project.authorization.snapshot", {
+                "project_id": project["id"],
+                "requests": [request],
+            }, request_id=envelope.id))
+            return
         if message_type == "project.delete":
             project_id = str(payload.get("project_id", "")).strip()
             current_project_id = str(getattr(connection.fanout_subscriber, "project_id", ""))
@@ -390,6 +429,7 @@ class AgentServer:
             return
         if message_type == "file.list":
             project = await self.projects.get(str(payload.get("project_id", "")))
+            self._require_authorized_workspace(project)
             result = await asyncio.to_thread(
                 self.files.list,
                 project,
@@ -399,6 +439,7 @@ class AgentServer:
             return
         if message_type == "file.upload.start":
             project = await self.projects.get(str(payload.get("project_id", "")))
+            self._require_authorized_workspace(project)
             relative_path = payload.get("path")
             size = payload.get("size")
             overwrite = payload.get("overwrite", False)
@@ -469,6 +510,7 @@ class AgentServer:
             return
         if message_type == "file.read":
             project = await self.projects.get(str(payload.get("project_id", "")))
+            self._require_authorized_workspace(project)
             max_bytes = payload.get("max_bytes", 320 * 1024)
             try:
                 requested_bytes = int(max_bytes)
@@ -484,6 +526,7 @@ class AgentServer:
             return
         if message_type == "file.write":
             project = await self.projects.get(str(payload.get("project_id", "")))
+            self._require_authorized_workspace(project)
             content = payload.get("content")
             if not isinstance(content, str):
                 raise ValidationError("content must be a string")
@@ -498,6 +541,7 @@ class AgentServer:
             return
         if message_type == "file.diff":
             project = await self.projects.get(str(payload.get("project_id", "")))
+            self._require_authorized_workspace(project)
             result = await asyncio.to_thread(
                 self.files.diff,
                 project,
@@ -507,6 +551,7 @@ class AgentServer:
             return
         if message_type == "file.revert":
             project = await self.projects.get(str(payload.get("project_id", "")))
+            self._require_authorized_workspace(project)
             result = await asyncio.to_thread(
                 self.files.revert,
                 project,
@@ -524,6 +569,10 @@ class AgentServer:
                 sandbox = SandboxMode(sandbox_value)
             except ValueError as exc:
                 raise ValidationError("invalid sandbox mode") from exc
+            if int(project.get("is_temporary") or 0) and sandbox is SandboxMode.WORKSPACE_WRITE:
+                raise ProjectAuthorizationRequired(
+                    "临时聊天尚未授权 PC 目录，请先在聊天页申请目录授权"
+                )
             model = self._requested_model(
                 payload.get("model"),
                 fallback=str(project.get("model") or self.config.models.default_model),
@@ -834,6 +883,7 @@ class AgentServer:
                     code="terminal.already_running",
                 )
             project = await self.projects.get(str(payload.get("project_id", "")))
+            self._require_authorized_workspace(project)
             cols = self._terminal_dimension(payload.get("cols", 80), MIN_TERMINAL_COLS, MAX_TERMINAL_COLS)
             rows = self._terminal_dimension(payload.get("rows", 24), MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS)
             requested_shell = payload.get("shell")
@@ -908,6 +958,24 @@ class AgentServer:
         if len(model) > 120:
             raise ValidationError("model name is too long")
         return model
+
+    @staticmethod
+    def _require_authorized_workspace(project: dict) -> None:
+        if int(project.get("is_temporary") or 0):
+            raise ProjectAuthorizationRequired(
+                "临时聊天尚未授权 PC 目录，请先在聊天页申请目录授权"
+            )
+
+    async def broadcast_authorization(self, request: dict[str, Any]) -> None:
+        for connection in list(self._connections):
+            subscriber = connection.fanout_subscriber
+            if getattr(subscriber, "project_id", None) != request.get("project_id"):
+                continue
+            await connection.send(response("project.authorization.snapshot", {
+                "project_id": request.get("project_id"),
+                "requests": [request],
+                "projects": await self.projects.list(),
+            }))
 
     async def _start_special_turn(self, project: dict, payload: dict, *, prompt: str) -> str:
         sandbox_value = payload.get("sandbox", project.get("default_sandbox", "workspace_write"))

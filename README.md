@@ -10,6 +10,7 @@ PC 端 Python Agent，是手机端 Codex Agent 工具的远程执行与安全中
 
 - **设备与接入**：生成配对码、审批/拒绝/吊销设备，只保存设备 Token 的 SHA-256 哈希。
 - **项目与会话**：创建/导入项目、同步 Codex 本地项目、恢复 thread、同步 PC 聊天记录、支持多会话事件回放。
+- **临时聊天**：不指定目录即可只读提问；如需访问文件，手机端发起请求，PC 管理页手动选择目录批准。
 - **Codex 调用**：转发任务到本机 Codex SDK，支持模型选择、沙箱模式、中断和实时事件转发。
 - **文件能力**：在授权目录内提供文件浏览、读取、保存、图片/HTML 辅助预览。
 - **运维控制**：CPU/内存/磁盘/网络指标、PTY 终端、屏幕帧订阅和鼠标键盘基础输入。
@@ -83,6 +84,7 @@ WebSocket 连接后，认证第一帧发送：
 支持：
 
 * `project.list` / `project.create` / `project.select`
+* `project.temporary.create` / `project.authorization.request` / `project.authorization.status`
 * `codex.project.list` / `codex.project.import` (discover local Codex session directories and import allowed projects)
 * `project.model`
 * `codex.history`
@@ -95,6 +97,8 @@ WebSocket 连接后，认证第一帧发送：
 * `ping`
 
 服务端响应包括 `ready`、`ok`、`error`、`project.snapshot`、`codex.history.snapshot`、`file.list.snapshot`、`file.read.snapshot`、`codex.event`、`agent.event`、`event.synced`、`metrics`、`screen.frame`、`terminal.ready`、`terminal.output`、`terminal.exit`。
+
+临时聊天使用 PC 私有 scratch 目录作为 Codex 工作目录，默认强制 `read_only`。未授权前，文件浏览/读取/写入/上传、diff、撤销、终端和 `workspace_write` turn 都会被拒绝；手机端提交目录授权请求后，必须在 PC 管理页手动选择 allowed root 内的目录批准。批准后该临时聊天绑定所选项目目录并转为正式项目。
 
 终端会话绑定当前 WebSocket 连接，只允许在已导入项目的工作目录中启动。Windows 安装可选依赖 `pywinpty` 后使用 PTY；未安装时降级到 `cmd.exe` 管道模式，`ready.capabilities.terminal_pty` 会返回 `false`。
 
@@ -112,6 +116,7 @@ Codex SDK 事件在 `codex.event.event` 字段中原样转发。
 * 设备令牌随机生成，数据库只保存 SHA-256 哈希。
 * 配对码短时效、限次尝试，并支持 PC 本地审批。
 * allowed roots 之外的目录不能创建项目。
+* 临时聊天不暴露 scratch 目录，目录能力必须经过 PC 端显式批准。
 * turn 默认使用 Codex `workspace-write` 沙箱；SDK 或平台不可用时按配置降级为 `read-only`。
 * 连接断开不会终止 turn，重连后可通过 seq replay 补齐事件。
 

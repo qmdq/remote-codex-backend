@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS pairing_codes (
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  normalized_path TEXT NOT NULL UNIQUE,
+  normalized_path TEXT NOT NULL,
   codex_thread_id TEXT,
   current_session_id TEXT,
   model TEXT,
@@ -41,7 +41,9 @@ CREATE TABLE IF NOT EXISTS projects (
   default_sandbox TEXT NOT NULL,
   created_at TEXT NOT NULL,
   last_active_at TEXT,
-  archived INTEGER NOT NULL DEFAULT 0
+  archived INTEGER NOT NULL DEFAULT 0,
+  is_temporary INTEGER NOT NULL DEFAULT 0,
+  authorized_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS codex_sessions (
@@ -143,19 +145,27 @@ class Database:
             ("events", "session_id"),
             ("turns", "model"),
             ("codex_sessions", "deleted_at"),
+            ("projects", "is_temporary"),
+            ("projects", "authorized_at"),
         ):
             cursor = await asyncio.to_thread(self._conn.execute, f"PRAGMA table_info({table})")
             rows = await asyncio.to_thread(cursor.fetchall)
             columns = {row["name"] for row in rows}
             if column not in columns:
+                definition = "INTEGER NOT NULL DEFAULT 0" if column == "is_temporary" else "TEXT"
                 await asyncio.to_thread(
                     self._conn.execute,
-                    f"ALTER TABLE {table} ADD COLUMN {column} TEXT",
+                    f"ALTER TABLE {table} ADD COLUMN {column} {definition}",
                 )
         await asyncio.to_thread(
             self._conn.execute,
             "CREATE INDEX IF NOT EXISTS idx_events_session "
             "ON events(project_id, session_id, project_seq)",
+        )
+        await asyncio.to_thread(
+            self._conn.execute,
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_normalized_path_active "
+            "ON projects(normalized_path) WHERE archived = 0",
         )
         await self._backfill_sessions()
 

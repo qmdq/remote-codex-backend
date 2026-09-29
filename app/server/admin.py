@@ -108,6 +108,7 @@ class AdminServer:
                 str(normalize_path(root)) for root in self.app.config.projects.allowed_roots
             ],
             "pairings": [dict(row) for row in await self.app.pairing.pending()],
+            "directory_authorizations": await self.app.directory_authorizations.pending(),
             "devices": [
                 {**dict(row), "revoked": bool(row["revoked_at"])}
                 for row in await self.app.devices.list()
@@ -132,6 +133,20 @@ class AdminServer:
     async def issue_pairing(self, device_name: str) -> dict[str, Any]:
         pairing_id, code = await self.app.pairing.issue(device_name)
         return {"pairing_id": pairing_id, "code": code}
+
+    async def approve_authorization(self, request_id: str, raw_path: str) -> dict[str, Any]:
+        project, request = await self.app.directory_authorizations.approve(
+            request_id, raw_path, self.app.projects
+        )
+        request = {**request, "status": "approved", "project": project}
+        await self.app.server.broadcast_authorization(request)
+        return request
+
+    async def reject_authorization(self, request_id: str) -> dict[str, Any]:
+        request = await self.app.directory_authorizations.reject(request_id)
+        request = {**request, "status": "rejected"}
+        await self.app.server.broadcast_authorization(request)
+        return request
 
     async def add_allowed_root(self, raw_path: str) -> dict[str, Any]:
         root = normalize_path(raw_path)
@@ -263,6 +278,16 @@ class AdminHandler(BaseHTTPRequestHandler):
             return self._call(self._revoke(unquote(match.group(1))))
         if self.path == "/api/allowed-roots":
             return self._call(self._add_allowed_root(body.get("path", "")))
+        match = re.fullmatch(
+            r"/api/directory-authorizations/([^/]+)/(approve|reject)", self.path
+        )
+        if match:
+            request_id = unquote(match.group(1))
+            if match.group(2) == "approve":
+                return self._call(self.admin.approve_authorization(
+                    request_id, str(body.get("path", ""))
+                ))
+            return self._call(self.admin.reject_authorization(request_id))
         return self._json({"message": "not found"}, 404)
 
     def do_DELETE(self) -> None:
@@ -384,6 +409,8 @@ class PreviewHandler(BaseHTTPRequestHandler):
             project = asyncio.run_coroutine_threadsafe(
                 self.admin.app.projects.get(project_id), loop
             ).result(timeout=5)
+            if int(project.get("is_temporary") or 0):
+                return self._json({"message": "临时聊天未授权目录，无法预览文件"}, 400)
             if parsed.path.startswith("/preview/"):
                 raw_path = unquote(parsed.path.removeprefix("/preview/")).strip("/")
             elif parsed.path in {"/preview", "/preview/"}:
@@ -495,6 +522,11 @@ class PreviewHandler(BaseHTTPRequestHandler):
             project = asyncio.run_coroutine_threadsafe(
                 self.admin.app.projects.get(project_id), loop,
             ).result(timeout=5)
+            if int(project.get("is_temporary") or 0):
+                return self._json({
+                    "message": "临时聊天未授权目录，请先在 PC 控制台完成目录授权",
+                    "code": "project.authorization_required",
+                }, 400)
             result = asyncio.run_coroutine_threadsafe(
                 asyncio.to_thread(
                     self.admin.app.files.save_upload,

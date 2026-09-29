@@ -49,6 +49,10 @@ class PathNotAllowedError(ProjectError):
     code = "project.not_allowed"
 
 
+class ProjectAuthorizationRequired(ProjectError):
+    code = "project.authorization_required"
+
+
 class TurnError(AgentError):
     code = "turn.failed"
 

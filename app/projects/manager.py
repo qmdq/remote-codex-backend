@@ -17,9 +17,16 @@ from .paths import normalize_path
 
 
 class ProjectService:
-    def __init__(self, database: Database, allowed_roots: list[Path]):
+    def __init__(
+        self,
+        database: Database,
+        allowed_roots: list[Path],
+        *,
+        temporary_root: Path | None = None,
+    ):
         self.db = database
         self.allowed_roots = [normalize_path(path) for path in allowed_roots]
+        self.temporary_root = temporary_root or database.path.parent / "temporary-projects"
 
     def _validate_path(self, raw_path: str) -> Path:
         try:
@@ -48,7 +55,13 @@ class ProjectService:
         )
         return dict(existing) if existing else None
 
-    async def _insert(self, name: str, path: Path) -> dict[str, Any]:
+    async def _insert(
+        self,
+        name: str,
+        path: Path,
+        *,
+        temporary: bool = False,
+    ) -> dict[str, Any]:
         project_id = f"prj_{secrets.token_hex(8)}"
         now = iso_now()
         await self.db.execute(
@@ -62,7 +75,7 @@ class ProjectService:
                 str(path),
                 None,
                 None,
-                "workspace_write",
+                "read_only" if temporary else "workspace_write",
                 now,
             ),
         )
@@ -74,6 +87,51 @@ class ProjectService:
         if existing:
             raise ProjectExistsError("directory is already registered")
         return await self._insert(name, path)
+
+    async def create_temporary(self, name: str = "") -> dict[str, Any]:
+        """Create a no-directory conversation backed by a private scratch folder."""
+
+        clean_name = name.strip() or "临时聊天"
+        project_id = f"prj_{secrets.token_hex(8)}"
+        path = self.temporary_root / f"{project_id}"
+        await asyncio.to_thread(path.mkdir, parents=True, exist_ok=True)
+        now = iso_now()
+        await self.db.execute(
+            """INSERT INTO projects(
+                 id, name, normalized_path, current_session_id,
+                 model, default_sandbox, created_at, is_temporary
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+            (
+                project_id,
+                clean_name,
+                str(path),
+                None,
+                None,
+                "read_only",
+                now,
+            ),
+        )
+        return await self.get(project_id)
+
+    async def authorize_temporary(self, project_id: str, raw_path: str) -> dict[str, Any]:
+        """Bind a temporary conversation to a user-approved workspace."""
+
+        project = await self.get(project_id)
+        if not int(project.get("is_temporary") or 0):
+            return project
+        path = self._validate_path(raw_path)
+        existing = await self._find_by_path(path)
+        if existing and existing["id"] != project_id:
+            raise ProjectExistsError("directory is already registered")
+        now = iso_now()
+        await self.db.execute(
+            """UPDATE projects
+               SET normalized_path = ?, default_sandbox = 'workspace_write',
+                   is_temporary = 0, authorized_at = ?, last_active_at = ?
+               WHERE id = ?""",
+            (str(path), now, now, project_id),
+        )
+        return await self.get(project_id)
 
     async def delete(self, project_id: str) -> None:
         """Remove a project from the remote registry without touching its files."""
@@ -212,7 +270,8 @@ class ProjectService:
                       s.title AS session_title,
                       COALESCE(s.updated_at, p.last_active_at, p.created_at) AS session_updated_at,
                       p.model, p.reasoning_effort, p.goal,
-                      p.default_sandbox, p.created_at, p.last_active_at
+                      p.default_sandbox, p.created_at, p.last_active_at,
+                      p.is_temporary, p.authorized_at
                FROM projects p
                LEFT JOIN codex_sessions s ON s.id = p.current_session_id
                WHERE p.id = ? AND p.archived = 0""",
@@ -228,7 +287,8 @@ class ProjectService:
                       s.title AS session_title,
                       COALESCE(s.updated_at, p.last_active_at, p.created_at) AS session_updated_at,
                       p.model, p.reasoning_effort, p.goal,
-                      p.default_sandbox, p.created_at, p.last_active_at
+                      p.default_sandbox, p.created_at, p.last_active_at,
+                      p.is_temporary, p.authorized_at
                FROM projects p
                LEFT JOIN codex_sessions s ON s.id = p.current_session_id
                WHERE p.archived = 0

@@ -70,6 +70,24 @@
     }
     .item:last-child { border-bottom: 0; }
     .item-main { min-width: 0; }
+    .authorization-item { align-items: stretch; }
+    .authorization-item .item-actions {
+      width: 128px;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .authorization-item .item-actions .button { width: 100%; }
+    .auth-directory-list {
+      max-height: 190px; overflow: auto; margin-top: 9px;
+      border: 1px solid #273557; border-radius: 9px; background: #0d1424;
+      scrollbar-width: thin; scrollbar-color: #31405f transparent;
+    }
+    .auth-directory-path {
+      min-height: 32px; display: flex; align-items: center;
+      padding: 0 9px; border-bottom: 1px solid rgba(255,255,255,.06);
+      color: #7dd3fc; font-size: 11px; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .title { overflow: hidden; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
     .meta { margin-top: 4px; color: #7d8db0; font-size: 11px; }
     .item-actions { display: flex; gap: 7px; flex: none; }
@@ -192,6 +210,13 @@
             <span class="tag" id="pendingCount">0 条</span>
           </div>
           <div class="list" id="pendingList"><div class="empty">暂无待处理请求</div></div>
+        </div>
+        <div class="card">
+          <div class="head">
+            <h2>临时聊天授权</h2>
+            <span class="tag" id="authorizationCount">0 条</span>
+          </div>
+          <div class="list" id="authorizationList"><div class="empty">暂无目录授权请求</div></div>
         </div>
         <div class="card">
           <div class="head">
@@ -335,6 +360,123 @@
       });
     }
 
+    const authorizationBrowsePaths = new Map();
+
+    async function browseAuthorizationDirectory(requestId, path) {
+      const row = document.querySelector(`[data-auth-request-id="${CSS.escape(requestId)}"]`);
+      const current = row?.querySelector(".auth-directory-list");
+      if (!current) return;
+      current.textContent = "";
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "读取目录中...";
+      current.appendChild(empty);
+      try {
+        const result = await api(`/api/filesystem?path=${encodeURIComponent(path)}`);
+        authorizationBrowsePaths.set(requestId, result.path || "");
+        current.textContent = "";
+        const caption = document.createElement("div");
+        caption.className = "auth-directory-path mono";
+        caption.textContent = result.path || "选择磁盘";
+        current.appendChild(caption);
+        if (!result.directories.length) {
+          const none = document.createElement("div");
+          none.className = "empty";
+          none.textContent = "没有子目录";
+          current.appendChild(none);
+        }
+        result.directories.forEach((directory) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "browse-entry";
+          button.textContent = result.path ? directory.split(/[\\/]/).filter(Boolean).pop() : directory;
+          button.title = directory;
+          button.onclick = () => browseAuthorizationDirectory(requestId, directory);
+          current.appendChild(button);
+        });
+      } catch (error) {
+        current.textContent = "";
+        const failed = document.createElement("div");
+        failed.className = "empty";
+        failed.textContent = "目录读取失败";
+        current.appendChild(failed);
+        show(error.message, "error");
+      }
+    }
+
+    function renderAuthorizations(items) {
+      const box = document.getElementById("authorizationList");
+      document.getElementById("authorizationCount").textContent = `${items.length} 条`;
+      box.textContent = "";
+      if (!items.length) return makeEmpty(box, "暂无目录授权请求");
+      [...authorizationBrowsePaths.keys()].forEach((requestId) => {
+        if (!items.some((item) => item.request_id === requestId)) authorizationBrowsePaths.delete(requestId);
+      });
+      items.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "item authorization-item";
+        row.dataset.authRequestId = item.request_id;
+        const main = document.createElement("div");
+        main.className = "item-main";
+        const title = document.createElement("div");
+        title.className = "title";
+        title.textContent = item.project_name || "临时聊天";
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = `${item.reason || "访问 PC 目录"} · ${remaining(item.expires_at)}`;
+        const browser = document.createElement("div");
+        browser.className = "auth-directory-list";
+        main.append(title, meta, browser);
+        const actions = document.createElement("div");
+        actions.className = "item-actions auth-actions";
+        const approve = document.createElement("button");
+        approve.className = "button small";
+        approve.textContent = "授权当前目录";
+        const reject = document.createElement("button");
+        reject.className = "button small ghost";
+        reject.textContent = "拒绝";
+        approve.onclick = async () => {
+          const selectedPath = authorizationBrowsePaths.get(item.request_id) || "";
+          if (!selectedPath) {
+            show("请先选择要授权的目录", "error");
+            return;
+          }
+          approve.disabled = true;
+          try {
+            await api(`/api/directory-authorizations/${encodeURIComponent(item.request_id)}/approve`, {
+              method: "POST",
+              body: JSON.stringify({ path: selectedPath }),
+            });
+            show("已授权目录，临时聊天已转为正式项目", "ok");
+            await refresh();
+          } catch (error) {
+            approve.disabled = false;
+            show(error.message, "error");
+          }
+        };
+        reject.onclick = async () => {
+          reject.disabled = true;
+          try {
+            await api(`/api/directory-authorizations/${encodeURIComponent(item.request_id)}/reject`, {
+              method: "POST",
+            });
+            show("已拒绝目录访问", "ok");
+            await refresh();
+          } catch (error) {
+            reject.disabled = false;
+            show(error.message, "error");
+          }
+        };
+        actions.append(approve, reject);
+        row.append(main, actions);
+        box.appendChild(row);
+        if (!authorizationBrowsePaths.has(item.request_id)) {
+          authorizationBrowsePaths.set(item.request_id, "");
+        }
+        browseAuthorizationDirectory(item.request_id, authorizationBrowsePaths.get(item.request_id) || "");
+      });
+    }
+
     function renderConfig(config) {
       const box = document.getElementById("configView");
       box.textContent = "";
@@ -419,6 +561,7 @@
         statusText.textContent = state.server.running ? "运行中" : "已停止";
         document.getElementById("phoneUrl").textContent = state.phone_url;
         renderPending(state.pairings);
+        renderAuthorizations(state.directory_authorizations || []);
         renderDevices(state.devices);
         renderRoots(state.allowed_roots || []);
         renderConfig(state.config);

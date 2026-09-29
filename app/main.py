@@ -26,6 +26,7 @@ from .input_service import system_input
 from .monitors.metrics import MetricsMonitor
 from .monitors.screen import ScreenMonitor
 from .projects.manager import ProjectService
+from .projects.authorizations import DirectoryAuthorizationService
 from .server.admin import AdminServer
 from .server.websocket import AgentServer
 from .storage.database import Database
@@ -66,6 +67,7 @@ class Application:
             self.database,
             [Path(path) for path in config.projects.allowed_roots],
         )
+        self.directory_authorizations = DirectoryAuthorizationService()
         if config.codex.mode == "fake":
             self.gateway = FakeCodexGateway()
         else:
@@ -100,6 +102,7 @@ class Application:
             devices=self.devices,
             pairing=self.pairing,
             projects=self.projects,
+            directory_authorizations=self.directory_authorizations,
             turns=self.turns,
             events=self.events,
             fanout=self.fanout,
@@ -162,6 +165,8 @@ class Application:
 
         try:
             for project in await self.projects.list():
+                if int(project.get("is_temporary") or 0):
+                    continue
                 records = await asyncio.to_thread(
                     self.sessions.sessions_for_project,
                     Path(project["normalized_path"]),

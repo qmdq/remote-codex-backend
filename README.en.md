@@ -12,6 +12,7 @@ By default, the Agent listens on `127.0.0.1`. LAN access requires an explicit co
 
 - **Devices and access:** generate pairing codes; approve, reject, or revoke devices. Only SHA-256 hashes of device tokens are stored.
 - **Projects and sessions:** create or import projects, discover local Codex projects, resume threads, sync PC Codex chat history, and replay multi-session events.
+- **Temporary chats:** ask read-only questions without selecting a directory; request directory access from the phone and approve a manually selected folder in the PC console.
 - **Codex execution:** forward tasks to the local Codex SDK with model selection, sandbox modes, interruption, and realtime event forwarding.
 - **File access:** browse, read, and save files inside authorized roots, with helper support for image and HTML previews.
 - **Operations control:** CPU, memory, disk, and network metrics; PTY terminal; screen-frame subscription; basic mouse and keyboard input.
@@ -83,6 +84,7 @@ All messages use the JSON envelope:
 Supported requests include:
 
 - `project.list` / `project.create` / `project.select`
+- `project.temporary.create` / `project.authorization.request` / `project.authorization.status`
 - `codex.project.list` / `codex.project.import`
 - `project.model`
 - `codex.history`
@@ -95,6 +97,8 @@ Supported requests include:
 - `ping`
 
 Server messages include `ready`, `ok`, `error`, `project.snapshot`, `codex.history.snapshot`, `file.list.snapshot`, `file.read.snapshot`, `codex.event`, `agent.event`, `event.synced`, `metrics`, `screen.frame`, `terminal.ready`, `terminal.output`, and `terminal.exit`.
+
+A temporary chat uses a private PC scratch directory as its Codex working directory and is forced to `read_only`. Until authorization, file browsing/reading/writing, uploads, diffs, reverts, terminal access, and `workspace_write` turns are rejected. After the phone requests directory access, the PC console must manually select and approve a directory inside an allowed root. Approval binds that directory to the chat and converts it into a regular project.
 
 Terminal sessions are bound to the current WebSocket connection and can only start inside an imported project working directory. With optional Windows dependency `pywinpty`, the backend uses a full PTY; otherwise it falls back to pipe mode, and `ready.capabilities.terminal_pty` returns `false`.
 
@@ -112,6 +116,7 @@ Touch-based remote control requires the desktop-control extras:
 - Device tokens are random; the database stores only SHA-256 hashes.
 - Pairing codes are short-lived, rate-limited, and approved locally on the PC.
 - Projects cannot be created outside allowed roots.
+- Temporary chats never expose their scratch directory; directory capabilities require explicit PC approval.
 - Turns use the Codex `workspace-write` sandbox by default and can degrade to `read-only` when required by configuration or platform capability.
 - Disconnecting does not stop a running turn; reconnect and replay events by `seq`.
 
