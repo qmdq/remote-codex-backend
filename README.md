@@ -3,18 +3,36 @@
 仓库地址：[https://github.com/qmdq/remote-codex-backend](https://github.com/qmdq/remote-codex-backend)  
 配套手机端：[https://github.com/qmdq/remote-codex-app](https://github.com/qmdq/remote-codex-app)
 
-PC 端 Python 后端，通过本机 WebSocket 暴露 Codex thread、turn、事件、屏幕和系统指标。默认只监听 `127.0.0.1`，由 frpc 负责出站隧道。
+PC 端 Python Agent，是 RemoteCodex 的控制与安全中枢。它在 PC 上管理设备配对、授权项目、Codex 会话、事件流、文件访问、系统指标、远程终端和屏幕控制，并通过 WebSocket 把状态同步给手机端；手机只发送受控指令，实际执行、审批和访问边界都留在 PC。默认只监听 `127.0.0.1`，局域网手机直连时需要使用显式开放监听地址的配置。
+
+## 能做什么
+
+- **设备与接入**：生成配对码、审批/拒绝/吊销设备，只保存设备 Token 的 SHA-256 哈希。
+- **项目与会话**：创建/导入项目、同步 Codex 本地项目、恢复 thread、同步 PC 聊天记录、支持多会话事件回放。
+- **Codex 调用**：转发任务到本机 Codex SDK，支持模型选择、沙箱模式、中断和实时事件转发。
+- **文件能力**：在授权目录内提供文件浏览、读取、保存、图片/HTML 辅助预览。
+- **运维控制**：CPU/内存/磁盘/网络指标、PTY 终端、屏幕帧订阅和鼠标键盘基础输入。
+
+## 预览
+
+<div align="center">
+  <img src="docs/screenshots/screenshot-1.png" width="49%" alt="RemoteCodex 聊天界面">
+  <img src="docs/screenshots/screenshot-2.png" width="49%" alt="RemoteCodex 会话与任务状态">
+  <br>
+  <img src="docs/screenshots/screenshot-3.png" width="49%" alt="RemoteCodex 文件与预览">
+  <img src="docs/screenshots/screenshot-4.png" width="49%" alt="RemoteCodex 远程屏幕">
+</div>
 
 ## 快速启动
 
 ```powershell
 cd backend
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[monitor,terminal]"
+.\.venv\Scripts\python.exe -m pip install -e ".[monitor,desktop,terminal]"
 .\.venv\Scripts\python.exe -m app serve --config config.local.json
 ```
 
-也可以双击 `backend\start.bat` 启动。它会自动创建 venv、安装依赖、后台运行 Agent 并打开配置页；双击 `backend\stop.bat` 停止。
+也可以双击 `start.bat` 启动。它会自动创建 venv、安装依赖、后台运行 Agent 并打开配置页；双击 `stop.bat` 停止。
 
 复制 `config.local.example.json` 为 `config.local.json` 并修改授权目录后启动。该配置监听 `0.0.0.0:7800`，数据库在 `backend\runtime\remote-codex.sqlite`。手机填 `ws://<电脑局域网IP>:7800`；用 `ipconfig` 查看电脑的 IPv4 地址。
 
