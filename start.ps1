@@ -57,9 +57,15 @@ if (Test-Path $PidFile) {
     }
 }
 
+$ConfigPath = Join-Path $Root "config.mobile.json"
+$ConfigTemplatePath = Join-Path $Root "config.example.json"
+if (-not (Test-Path $ConfigPath) -and (Test-Path $ConfigTemplatePath)) {
+    Copy-Item -LiteralPath $ConfigTemplatePath -Destination $ConfigPath
+    Write-Host "[RemoteCodex] Created config.mobile.json from config.example.json."
+}
+
 $ExpectedPort = 7800
 try {
-    $ConfigPath = Join-Path $Root "config.mobile.json"
     if (Test-Path $ConfigPath) {
         $Config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
         $ExpectedPort = [int]$Config.server.port
